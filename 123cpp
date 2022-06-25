@@ -1,0 +1,134 @@
+class client
+{
+private:
+    /* data */
+private:
+    /// ZMQ use for internal thread comunication
+    /// modbus collect data pub to server
+    void *m_zmq_context;
+
+    void *m_zmq_socket;
+
+public:
+    client(UINT8 id);
+    ~client();
+    static void *client_handle(void *pthis);
+    thread *m_ph_client;
+    UINT8 InitInternalThreadCommunication();
+
+    zmq_init_param m_pub_param;
+    zmq_init_param m_sub_param;
+
+    /// client ZMQ pub & sub  for service
+    void *m_zmq_client_pub;
+    void *m_zmq_client_pub_socket;
+    void *m_zmq_client_sub;
+    void *m_zmq_client_sub_socket;
+};
+
+client::client(UINT8 id)
+{
+    m_modbus_id = id;
+    m_pObj = this;
+    m_pub_param.id = 1;
+    m_pub_param.ipaddress = "127.0.0.1";
+    m_pub_param.port = 8888;
+    m_pub_param.role = "pub";
+    m_pub_param.topic = "pub_topic";
+    m_pObj = this;
+    LOG_IF(1, DEBUG) << m_pub_param.ipaddress << " " << m_pub_param.topic << " " << m_pub_param.port;
+    // }
+    // else if (tmpjson["server-role"] == "subscribe")
+    // {
+    m_sub_param.id = 2;
+    m_sub_param.ipaddress = "127.0.0.1";
+    m_sub_param.port = 6666;
+    m_sub_param.role = "sub";
+    m_sub_param.topic = "sub_topic";
+
+    m_zmq_client_pub = zmq_ctx_new();
+    m_zmq_client_sub = zmq_ctx_new();
+
+    m_zmq_client_pub_socket = NULL;
+    m_zmq_client_sub_socket = NULL;
+
+    /// public
+    m_zmq_client_pub_socket = zmq_socket(m_zmq_client_pub, ZMQ_PUB);
+    CHAR endpoint[40] = {0};
+    sprintf((char *)endpoint, "tcp://%s:%d", m_pub_param.ipaddress.data(), m_pub_param.port);
+    ret = zmq_bind(m_zmq_client_pub_socket, (char *)endpoint);
+
+    if (Lret_success != ret)
+    {
+        LOG(ERROR) << "OdlxCarClient::InitClient>>ZMQ_PUB zsock_bind error " << endpoint << endl;
+    }
+    else
+    {
+        LOG(INFO) << "ZMQ_PUB zsock_bind success " << endpoint << endl;
+    }
+
+    /// sub
+    m_zmq_client_sub_socket = zmq_socket(m_zmq_client_sub, ZMQ_SUB);
+    memset(endpoint, 0, 20);
+    sprintf((char *)endpoint, "tcp://%s:%d", m_sub_param.ipaddress.data(), m_sub_param.port);
+    ret = zmq_connect(m_zmq_client_sub_socket, (char *)endpoint);
+    zmq_setsockopt(m_zmq_client_sub_socket, ZMQ_SUBSCRIBE, m_sub_param.topic.data(), m_sub_param.topic.size());
+    int water_mark = 0;
+    zmq_setsockopt(m_zmq_client_sub_socket, ZMQ_RCVHWM, &water_mark, sizeof(water_mark));
+
+    // InitInternalThreadCommunication();
+    m_ph_client = new thread(client_handle, (void *)this);
+}
+
+client::~client()
+{
+}
+
+// void client::client_handle(client &pthis)
+void *client::client_handle(void *pthis)
+{
+    if (NULL == pthis)
+    {
+        return NULL;
+    }
+    client *pObj = (client *)pthis;
+
+    usleep(1000 * 1000);
+    LOG(INFO) << "client_handle线程运行喽........";
+    while (1)
+    {
+        zmq_send(pObj->m_zmq_socket, "InitInternalThreadComunication111111111111111111111", strlen("InitInternalThreadComunication111111111111111111111"), ZMQ_SNDMORE);
+        int length = zmq_send(pObj->m_zmq_socket, to_string(pObj->m_modbus_id).data(), 1, 0);
+        LOG_EVERY_N(1, INFO) << " <<<<<<<<<<<<<<<client_handle线程  packet  长度== " << length << endl;
+        usleep(1000 * 1000);
+    }
+}
+
+UINT8 client::InitInternalThreadCommunication()
+{
+    /// Init zmq
+    INT32 ret = Lret_success;
+
+    m_zmq_context = zmq_ctx_new();
+    m_zmq_socket = zmq_socket(m_zmq_context, ZMQ_PUB);
+
+    int water_mark = 0;
+    zmq_setsockopt(m_zmq_socket, ZMQ_SNDHWM, &water_mark, sizeof(water_mark));
+
+    CHAR endpoint[40] = {0};
+    sprintf((char *)endpoint, "tcp://%s:%d", "127.0.0.1", 9999 + m_modbus_id);
+    ret = zmq_bind(m_zmq_socket, (char *)endpoint);
+
+    if (Lret_success != ret)
+    {
+        LOG(ERROR) << "OdlxCarModbus::InitInternalThreadCommunication>>ZMQ_PUB zsock_bind error " << endpoint << "m_modbus_id = " << (UINT32)m_modbus_id;
+
+        ret = Lret_fail;
+    }
+    else
+    {
+        LOG(INFO) << "ZMQ_PUB zsock_bind success " << endpoint << "m_modbus_id = " << (UINT32)m_modbus_id;
+    }
+
+    return ret;
+}
